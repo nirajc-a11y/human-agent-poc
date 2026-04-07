@@ -1,0 +1,75 @@
+@import '@fortawesome/fontawesome-free/css/all.min.css';
+
+:root {
+  /* Layout */
+  --sidebar-w: 64px;
+  --dialer-w:  300px;
+  --topbar-h:  56px;
+
+  /* Light theme palette */
+  --bg:              #f5f6fa;
+  --surface:         #ffffff;
+  --surface-2:       #fafbfc;
+  --surface-3:       #f0f1f5;
+  --border:          #e8eaef;
+  --border-strong:   #d4d8e2;
+
+  --sidebar-bg:      #1c1f2e;
+  --sidebar-border:  #272b3d;
+  --sidebar-hover:   #272b3d;
+  --sidebar-active:  #2e3352;
+
+  --accent:          #4f6ef7;
+  --accent-hover:    #3b5be0;
+  --accent-dim:      #eef1fe;
+  --accent-muted:    #c5cefb;
+
+  --green:           #16a34a;
+  --green-dim:       #f0fdf4;
+  --green-border:    #bbf7d0;
+
+  --red:             #dc2626;
+  --red-dim:         #fef2f2;
+  --red-border:      #fecaca;
+
+  --amber:           #d97706;
+  --amber-dim:       #fffbeb;
+  --amber-border:    #fde68a;
+
+  --oncall:          #1e3a8a;
+
+  --text-1:  #111827;
+  --text-2:  #374151;
+  --text-3:  #6b7280;
+  --text-4:  #9ca3af;
+
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-sm: 0 1px 4px rgba(0,0,0,.07), 0 2px 8px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.04);
+}
+
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text-1);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { cursor: pointer; border: none; font-family: inherit; font-size: 13px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+input, select { font-family: inherit; font-size: 13px; outline: none; }
+a { color: inherit; text-decoration: none; }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 99px; }
+
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+@keyframes slide-up  { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fade-in   { from{opacity:0} to{opacity:1} }
+@keyframes ring-anim { 0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.4)} 60%{box-shadow:0 0 0 8px rgba(22,163,74,0)} }

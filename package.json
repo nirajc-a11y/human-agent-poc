@@ -4,11 +4,17 @@
   "description": "Plivo browser calling POC — inbound + outbound for 3 agents",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "cd client && npm run build",
+    "dev:server": "node server.js",
+    "dev:client": "cd client && npm run dev"
   },
   "dependencies": {
+    "better-sqlite3": "^12.8.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "groq-sdk": "^1.1.2",
+    "jsonwebtoken": "^9.0.3",
     "plivo": "^4.56.0"
   }
 }

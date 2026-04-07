@@ -28,11 +28,13 @@ const agentById = {};   // keyed by endpointUsername
     endpointUsername: process.env.AGENT3_ENDPOINT_USERNAME,
     endpointPassword: process.env.AGENT3_ENDPOINT_PASSWORD,
   },
-].forEach((agent) => {
+].filter(a => a.name && a.endpointUsername).forEach((agent) => {
   agentMap[agent.number] = agent;
   agentById[agent.endpointUsername] = agent;
 });
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
-module.exports = { plivoClient, agentMap, agentById, BASE_URL };
+module.exports = { plivoClient, agentMap, agentById, BASE_URL, GROQ_API_KEY, JWT_SECRET };
