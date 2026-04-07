@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { agentMap, agentById, plivoClient, BASE_URL } = require('../config');
+const { agentMap, agentById, BASE_URL } = require('../config');
 
 const voicemailLog = [];
 
@@ -8,40 +8,71 @@ function xml(content) {
   return `<?xml version="1.0" encoding="UTF-8"?><Response>${content}</Response>`;
 }
 
-// POST /inbound-call — Plivo answer URL
-router.post('/inbound-call', (req, res) => {
+// POST /call-handler — unified answer URL set on BrowserCallingApp in Plivo console.
+// This receives ALL call events for the app: inbound PSTN calls AND outbound SDK calls.
+//
+// Plivo sends Direction=inbound when an external caller dials the Plivo number.
+// Plivo sends Direction=outbound for SDK-initiated calls (both legs).
+//
+// Outbound has two legs:
+//   Leg 1: From = sip:AgentUsername@phone.plivo.com  → dial the destination number
+//   Leg 2: From = destination phone number            → already bridged, return empty
+router.post('/call-handler', (req, res) => {
   res.set('Content-Type', 'text/xml');
-  const toNumber = req.body.To || req.body.to;
-  const agent = agentMap[toNumber];
+  const to        = req.body.To        || req.body.to        || '';
+  const from      = req.body.From      || req.body.from      || '';
+  const direction = (req.body.Direction || req.body.direction || '').toLowerCase();
 
-  if (!agent) {
-    console.log(`[inbound-call] Unknown number: ${toNumber}`);
-    return res.send(xml('<Speak>This number is not configured. Goodbye.</Speak>'));
+  console.log(`[call-handler] direction=${direction} from=${from} to=${to}`);
+
+  // ── Inbound PSTN ────────────────────────────────────────────────────
+  if (direction === 'inbound') {
+    const normalised = to && !to.startsWith('+') ? '+' + to : to;
+    const agent = agentMap[normalised] || agentMap[to];
+    if (!agent) {
+      console.log(`[call-handler] inbound — no agent for ${to}, known: ${Object.keys(agentMap).join(', ')}`);
+      return res.send(xml('<Speak>This number is not configured. Goodbye.</Speak>'));
+    }
+    console.log(`[call-handler] inbound — routing to ${agent.name} (${agent.endpointUsername})`);
+    return res.send(xml(
+      `<Dial callbackUrl="${BASE_URL}/inbound-fallback" callbackMethod="POST" timeout="25">` +
+      `<User>sip:${agent.endpointUsername}@phone.plivo.com</User>` +
+      `</Dial>`
+    ));
   }
 
-  console.log(`[inbound-call] Routing to ${agent.name} (${agent.endpointUsername})`);
-  res.send(xml(
-    `<Dial callbackUrl="${BASE_URL}/inbound-fallback" callbackMethod="POST" timeout="25">` +
-    `<User>sip:${agent.endpointUsername}@phone.plivo.com</User>` +
-    `</Dial>`
-  ));
+  // ── Outbound SDK Leg 1: browser → destination ───────────────────────
+  if (from.includes('@phone.plivo.com') || from.startsWith('sip:')) {
+    const sipUsername = from.replace(/^sip:/, '').replace(/@.*$/, '');
+    const agent = agentById[sipUsername];
+    const callerId = agent ? agent.number : '';
+    console.log(`[call-handler] outbound leg1 — ${sipUsername} → ${to}, callerId: ${callerId || 'none'}`);
+    if (!to) return res.send(xml('<Speak>No destination number. Goodbye.</Speak>'));
+    const dialAttrs = callerId ? ` callerId="${callerId}"` : '';
+    return res.send(xml(`<Dial${dialAttrs}><Number>${to}</Number></Dial>`));
+  }
+
+  // ── Outbound SDK Leg 2: destination answered, already bridged ───────
+  console.log(`[call-handler] outbound leg2 — ${from} answered, bridge complete`);
+  res.send(xml(''));
 });
 
-// POST /inbound-fallback — agent didn't answer in 25s
+// POST /inbound-fallback — agent didn't answer within timeout → voicemail
 router.post('/inbound-fallback', (req, res) => {
   res.set('Content-Type', 'text/xml');
-  console.log(`[inbound-fallback] Agent did not answer, playing voicemail prompt`);
+  console.log('[inbound-fallback] no answer — playing voicemail prompt');
   res.send(xml(
     `<Speak>Hi, we're unavailable right now. Please leave a message after the beep.</Speak>` +
     `<Record action="${BASE_URL}/voicemail-recording" maxLength="120" playBeep="true" transcribe="false"/>`
   ));
 });
 
-// POST /voicemail-recording — recording complete callback
+// POST /voicemail-recording — recording complete callback from Plivo
 router.post('/voicemail-recording', (req, res) => {
   const toNumber = req.body.To || req.body.to;
+  const normalised = toNumber && !toNumber.startsWith('+') ? '+' + toNumber : toNumber;
   const entry = {
-    agentName: (toNumber && agentMap[toNumber]) ? agentMap[toNumber].name : null,
+    agentName: (agentMap[normalised] || agentMap[toNumber] || {}).name || null,
     callerNumber: req.body.From || req.body.from || 'Unknown',
     recordingUrl: req.body.RecordingUrl || req.body.recording_url || '',
     duration: req.body.RecordingDuration || req.body.recording_duration || '0',
@@ -52,48 +83,9 @@ router.post('/voicemail-recording', (req, res) => {
   res.sendStatus(200);
 });
 
-// POST /outbound-call — frontend triggers outbound via Plivo REST API
-router.post('/outbound-call', async (req, res) => {
-  const { agentId, toNumber } = req.body;
-
-  if (!agentId || !agentById[agentId]) {
-    return res.status(400).json({ error: 'Invalid agentId' });
-  }
-  if (!toNumber || !/^\+\d{7,15}$/.test(toNumber)) {
-    return res.status(400).json({ error: 'Invalid number format. Use E.164 (e.g. +14155550123)' });
-  }
-
-  const agent = agentById[agentId];
-
-  try {
-    const response = await plivoClient.calls.create(
-      agent.number,
-      toNumber,
-      `${BASE_URL}/outbound-answer?agentId=${encodeURIComponent(agentId)}`
-    );
-    console.log(`[outbound-call] ${agent.name} → ${toNumber}, UUID: ${response.requestUuid}`);
-    res.json({ success: true, callUuid: response.requestUuid });
-  } catch (err) {
-    console.error('[outbound-call] Error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /outbound-answer — answer URL for outbound destination leg
-router.get('/outbound-answer', (req, res) => {
-  res.set('Content-Type', 'text/xml');
-  const agentId = req.query.agentId;
-  const agent = agentId && agentById[agentId];
-
-  if (!agent) {
-    console.log(`[outbound-answer] Unknown agentId: ${agentId}`);
-    return res.send(xml('<Speak>Call configuration error. Goodbye.</Speak>'));
-  }
-
-  console.log(`[outbound-answer] Connecting destination to ${agent.name}`);
-  res.send(xml(
-    `<Dial><User>sip:${agent.endpointUsername}@phone.plivo.com</User></Dial>`
-  ));
+// GET /agents — also expose voicemail log for debugging
+router.get('/voicemail-log', (req, res) => {
+  res.json(voicemailLog);
 });
 
 module.exports = router;

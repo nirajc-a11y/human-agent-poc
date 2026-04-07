@@ -256,20 +256,13 @@ function initPlivo(agent) {
   plivoBrowser.client.on('onIncomingCall', (callerName, extraHeaders, callInfo) => {
     console.log('[sdk] incoming call from', callerName, callInfo);
 
-    // Auto-answer if this is the return leg of our own outbound call
-    if (pendingOutboundUuid) {
-      console.log('[sdk] auto-answering outbound return leg');
-      incomingCallObj = callInfo;
-      lastCallDirection = 'outbound';
-      pendingOutboundUuid = null;
-      plivoBrowser.client.answer();
-      return;
-    }
-
+    // All onIncomingCall events are real inbound calls now.
+    // Outbound SDK calls (client.call()) fire onCallRemoteRinging, not onIncomingCall.
     incomingCallObj = callInfo;
     lastCallDirection = 'inbound';
-    incomingFrom.textContent = `From: ${callerName || 'Unknown'}`;
-    activeNumber.textContent = callerName || 'Unknown';
+    const displayName = callerName || callInfo.src || 'Unknown';
+    incomingFrom.textContent = `From: ${displayName}`;
+    activeNumber.textContent = displayName;
     incomingCard.classList.remove('hidden');
     setStatus('ringing');
   });
@@ -339,7 +332,7 @@ agentSelect.addEventListener('change', async () => {
 });
 
 // ── Outbound call ──────────────────────────────────────────────────────
-btnCall.addEventListener('click', async () => {
+btnCall.addEventListener('click', () => {
   dialError.textContent = '';
   const toNumber = dialInput.value.trim();
 
@@ -355,45 +348,27 @@ btnCall.addEventListener('click', async () => {
     dialError.textContent = 'Select an agent first.';
     return;
   }
+  if (!plivoBrowser) {
+    dialError.textContent = 'SDK not ready. Select an agent first.';
+    return;
+  }
 
   btnCall.disabled = true;
   btnCall.textContent = 'Calling...';
   activeNumber.textContent = toNumber;
   lastCallDirection = 'outbound';
 
+  // Use SDK direct call — Plivo routes via the endpoint's assigned app answer URL
+  // X-PH-callerId tells Plivo to use the agent's number as outbound caller ID
+  const extraHeaders = {
+    'X-PH-callerId': currentAgent.number,
+  };
+
   try {
-    const resp = await fetch('/outbound-call', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId: currentAgent.id, toNumber }),
-    });
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      dialError.textContent = data.error || 'Call failed.';
-      btnCall.disabled = false;
-      btnCall.textContent = 'Call';
-      activeNumber.textContent = '—';
-      lastCallDirection = null;
-      return;
-    }
-
-    pendingOutboundUuid = data.callUuid;
-    // Guard: clear if browser leg never arrives within 30s
-    const uuidToClear = data.callUuid;
-    setTimeout(() => {
-      if (pendingOutboundUuid === uuidToClear) {
-        console.log('[outbound] browser leg did not arrive within 30s, clearing pendingOutboundUuid');
-        pendingOutboundUuid = null;
-        btnCall.disabled = false;
-        btnCall.textContent = 'Call';
-        lastCallDirection = null;
-        activeNumber.textContent = '—';
-      }
-    }, 30000);
-    console.log('[outbound] call initiated, UUID:', data.callUuid);
+    plivoBrowser.client.call(toNumber, extraHeaders);
+    console.log('[outbound] SDK call initiated to', toNumber);
   } catch (err) {
-    dialError.textContent = 'Network error. Is the server running?';
+    dialError.textContent = 'Call failed: ' + err.message;
     btnCall.disabled = false;
     btnCall.textContent = 'Call';
     activeNumber.textContent = '—';
