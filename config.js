@@ -33,6 +33,6 @@ const agentById = {};   // keyed by endpointUsername
   agentById[agent.endpointUsername] = agent;
 });
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
 
 module.exports = { plivoClient, agentMap, agentById, BASE_URL };

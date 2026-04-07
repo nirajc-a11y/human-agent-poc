@@ -11,7 +11,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/', require('./routes/agents'));
 app.use('/', require('./routes/calls'));
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Plivo browser calling server running on http://localhost:${PORT}`);
 });

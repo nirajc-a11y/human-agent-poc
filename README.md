@@ -65,7 +65,7 @@ AGENT1_ENDPOINT_PASSWORD=xxxxxxxx
 # same for Agent2, Agent3
 
 BASE_URL=https://your-ngrok-url.ngrok.io
-PORT=3000
+PORT=5000
 ```
 
 ---
@@ -76,14 +76,14 @@ PORT=3000
 node server.js
 ```
 
-Expected: `Plivo browser calling server running on http://localhost:3000`
+Expected: `Plivo browser calling server running on http://localhost:5000`
 
 ---
 
 ## Step 5: Set Up ngrok
 
 ```bash
-ngrok http 3000
+ngrok http 5000
 ```
 
 Copy the HTTPS URL (e.g. `https://abc123.ngrok.io`).
