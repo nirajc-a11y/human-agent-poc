@@ -211,7 +211,8 @@ function renderCallLog() {
       ? '<span class="dir-in" title="Inbound">↓</span>'
       : '<span class="dir-out" title="Outbound">↑</span>';
     const time = new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return `<tr><td>${arrow}</td><td>${e.number}</td><td>${formatDuration(e.duration)}</td><td>${time}</td></tr>`;
+    const safeNumber = e.number.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<tr><td>${arrow}</td><td>${safeNumber}</td><td>${formatDuration(e.duration)}</td><td>${time}</td></tr>`;
   }).join('');
 }
 
@@ -219,6 +220,7 @@ function renderCallLog() {
 function initPlivo(agent) {
   if (plivoBrowser) {
     try { plivoBrowser.client.logout(); } catch(e) {}
+    try { if (plivoBrowser.client.destroy) plivoBrowser.client.destroy(); } catch(e) {}
     plivoBrowser = null;
   }
 
@@ -287,6 +289,16 @@ function initPlivo(agent) {
     incomingCard.classList.add('hidden');
     activeCard.classList.add('hidden');
     setStatus('connected');
+    btnCall.textContent = 'Call';
+
+    // Don't log rejected inbound calls (no answer = no call)
+    if (duration === 0 && lastCallDirection === null) {
+      incomingCard.classList.add('hidden');
+      activeCard.classList.add('hidden');
+      setStatus('connected');
+      btnCall.textContent = 'Call';
+      return;
+    }
 
     addToCallLog({
       direction: lastCallDirection || 'inbound',
@@ -367,6 +379,18 @@ btnCall.addEventListener('click', async () => {
     }
 
     pendingOutboundUuid = data.callUuid;
+    // Guard: clear if browser leg never arrives within 30s
+    const uuidToClear = data.callUuid;
+    setTimeout(() => {
+      if (pendingOutboundUuid === uuidToClear) {
+        console.log('[outbound] browser leg did not arrive within 30s, clearing pendingOutboundUuid');
+        pendingOutboundUuid = null;
+        btnCall.disabled = false;
+        btnCall.textContent = 'Call';
+        lastCallDirection = null;
+        activeNumber.textContent = '—';
+      }
+    }, 30000);
     console.log('[outbound] call initiated, UUID:', data.callUuid);
   } catch (err) {
     dialError.textContent = 'Network error. Is the server running?';
@@ -383,11 +407,12 @@ btnAccept.addEventListener('click', () => {
 });
 
 btnReject.addEventListener('click', () => {
-  if (plivoBrowser) plivoBrowser.client.reject();
-  incomingCard.classList.add('hidden');
-  incomingCallObj = null;
-  lastCallDirection = null;
-  setStatus('connected');
+  if (plivoBrowser) {
+    incomingCard.classList.add('hidden');
+    incomingCallObj = null;
+    lastCallDirection = null; // don't log rejected calls
+    plivoBrowser.client.reject();
+  }
 });
 
 btnHangup.addEventListener('click', () => {
