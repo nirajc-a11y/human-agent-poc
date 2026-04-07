@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plivo Browser Calling</title>
+  <script src="https://cdn.plivo.com/sdk/browser/v2/plivo.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+    .app { max-width: 520px; margin: 32px auto; padding: 0 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    h1 { font-size: 20px; font-weight: 700; color: #1a1a2e; }
+    .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .agent-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    select { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: #fff; cursor: pointer; }
+    .status { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #9ca3af; }
+    .dot.connected { background: #22c55e; }
+    .dot.ringing { background: #f59e0b; animation: pulse 0.8s infinite; }
+    .dot.on-call { background: #3b82f6; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; margin-bottom: 12px; }
+    .dial-row { display: flex; gap: 8px; }
+    .dial-row input { flex: 1; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; }
+    .dial-row input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-call { background: #22c55e; color: #fff; }
+    .btn-call:hover:not(:disabled) { background: #16a34a; }
+    .btn-accept { background: #22c55e; color: #fff; flex: 1; }
+    .btn-accept:hover { background: #16a34a; }
+    .btn-reject { background: #ef4444; color: #fff; flex: 1; }
+    .btn-reject:hover { background: #dc2626; }
+    .btn-hangup { background: #ef4444; color: #fff; width: 100%; margin-top: 12px; padding: 12px; font-size: 15px; }
+    .btn-hangup:hover { background: #dc2626; }
+    .incoming-card { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+    .incoming-from { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+    .incoming-actions { display: flex; gap: 8px; }
+    .active-card { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+    .active-number { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+    .active-timer { font-size: 13px; color: #6b7280; margin-bottom: 4px; }
+    .error-msg { color: #ef4444; font-size: 13px; margin-top: 6px; min-height: 18px; }
+    .hidden { display: none !important; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-weight: 600; color: #6b7280; padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+    td { padding: 8px 8px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .dir-in { color: #3b82f6; font-weight: 700; font-size: 15px; }
+    .dir-out { color: #8b5cf6; font-weight: 700; font-size: 15px; }
+    .log-empty { color: #9ca3af; font-size: 13px; text-align: center; padding: 16px 0; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="card">
+    <div class="header">
+      <h1>Plivo Browser Calling</h1>
+      <div class="agent-row">
+        <select id="agentSelect">
+          <option value="">Select agent...</option>
+        </select>
+        <div class="status">
+          <div class="dot" id="statusDot"></div>
+          <span id="statusText">Disconnected</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Incoming call (hidden by default) -->
+  <div class="incoming-card hidden" id="incomingCard">
+    <div class="section-label">Incoming Call</div>
+    <div class="incoming-from" id="incomingFrom">From: unknown</div>
+    <div class="incoming-actions">
+      <button class="btn btn-accept" id="btnAccept">Accept</button>
+      <button class="btn btn-reject" id="btnReject">Reject</button>
+    </div>
+  </div>
+
+  <!-- Active call (hidden by default) -->
+  <div class="active-card hidden" id="activeCard">
+    <div class="section-label">Active Call</div>
+    <div class="active-number" id="activeNumber">—</div>
+    <div class="active-timer" id="activeTimer">⏱ 00:00</div>
+    <button class="btn btn-hangup" id="btnHangup">Hang Up</button>
+  </div>
+
+  <!-- Outbound dialer -->
+  <div class="card">
+    <div class="section-label">Outbound</div>
+    <div class="dial-row">
+      <input type="tel" id="dialInput" placeholder="+14155550123" />
+      <button class="btn btn-call" id="btnCall" disabled>Call</button>
+    </div>
+    <div class="error-msg" id="dialError"></div>
+  </div>
+
+  <!-- Call log -->
+  <div class="card">
+    <div class="section-label">Call Log</div>
+    <div id="callLogContainer">
+      <div class="log-empty" id="logEmpty">No calls yet</div>
+      <table class="hidden" id="callLogTable">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Number</th>
+            <th>Duration</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody id="callLogBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────
+let agents = [];
+let currentAgent = null;
+let plivoBrowser = null;
+let activeCall = null;
+let incomingCallObj = null;
+let callStartTime = null;
+let timerInterval = null;
+let pendingOutboundUuid = null;
+let lastCallDirection = null;
+let callLog = [];
+
+// ── DOM refs ───────────────────────────────────────────────────────────
+const agentSelect  = document.getElementById('agentSelect');
+const statusDot    = document.getElementById('statusDot');
+const statusText   = document.getElementById('statusText');
+const incomingCard = document.getElementById('incomingCard');
+const incomingFrom = document.getElementById('incomingFrom');
+const btnAccept    = document.getElementById('btnAccept');
+const btnReject    = document.getElementById('btnReject');
+const activeCard   = document.getElementById('activeCard');
+const activeNumber = document.getElementById('activeNumber');
+const activeTimer  = document.getElementById('activeTimer');
+const btnHangup    = document.getElementById('btnHangup');
+const dialInput    = document.getElementById('dialInput');
+const btnCall      = document.getElementById('btnCall');
+const dialError    = document.getElementById('dialError');
+const logEmpty     = document.getElementById('logEmpty');
+const callLogTable = document.getElementById('callLogTable');
+const callLogBody  = document.getElementById('callLogBody');
+
+// ── Status helpers ─────────────────────────────────────────────────────
+function setStatus(state) {
+  statusDot.className = 'dot';
+  const map = {
+    disconnected: { label: 'Disconnected', cls: '' },
+    connected:    { label: 'Connected',    cls: 'connected' },
+    ringing:      { label: 'Ringing',      cls: 'ringing' },
+    'on-call':    { label: 'On Call',      cls: 'on-call' },
+  };
+  const s = map[state] || map.disconnected;
+  statusText.textContent = s.label;
+  if (s.cls) statusDot.classList.add(s.cls);
+  btnCall.disabled = (state !== 'connected');
+}
+
+// ── Timer ──────────────────────────────────────────────────────────────
+function startTimer() {
+  callStartTime = Date.now();
+  timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+    const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const s = String(elapsed % 60).padStart(2, '0');
+    activeTimer.textContent = `⏱ ${m}:${s}`;
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  const elapsed = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
+  callStartTime = null;
+  return elapsed;
+}
+
+function formatDuration(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+// ── Call log ───────────────────────────────────────────────────────────
+function addToCallLog(entry) {
+  callLog.unshift(entry);
+  if (callLog.length > 50) callLog.pop();
+  renderCallLog();
+}
+
+function renderCallLog() {
+  if (callLog.length === 0) {
+    logEmpty.classList.remove('hidden');
+    callLogTable.classList.add('hidden');
+    return;
+  }
+  logEmpty.classList.add('hidden');
+  callLogTable.classList.remove('hidden');
+  callLogBody.innerHTML = callLog.map(e => {
+    const arrow = e.direction === 'inbound'
+      ? '<span class="dir-in" title="Inbound">↓</span>'
+      : '<span class="dir-out" title="Outbound">↑</span>';
+    const time = new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `<tr><td>${arrow}</td><td>${e.number}</td><td>${formatDuration(e.duration)}</td><td>${time}</td></tr>`;
+  }).join('');
+}
+
+// ── Plivo SDK ──────────────────────────────────────────────────────────
+function initPlivo(agent) {
+  if (plivoBrowser) {
+    try { plivoBrowser.client.logout(); } catch(e) {}
+    plivoBrowser = null;
+  }
+
+  plivoBrowser = new window.Plivo({
+    debug: 'ERROR',
+    permOnClick: true,
+    enableTracking: true,
+    closeProtection: false,
+    maxAverageBitrate: 48000,
+  });
+
+  plivoBrowser.client.on('onLogin', () => {
+    console.log('[sdk] logged in as', agent.username);
+    setStatus('connected');
+  });
+
+  plivoBrowser.client.on('onLoginFailed', (cause) => {
+    console.error('[sdk] login failed:', cause);
+    setStatus('disconnected');
+    alert(`Login failed for ${agent.name}: ${cause}`);
+  });
+
+  plivoBrowser.client.on('onLogout', () => {
+    console.log('[sdk] logged out');
+    setStatus('disconnected');
+  });
+
+  plivoBrowser.client.on('onCallRemoteRinging', (callInfo) => {
+    console.log('[sdk] remote ringing', callInfo);
+    setStatus('ringing');
+  });
+
+  plivoBrowser.client.on('onIncomingCall', (callerName, extraHeaders, callInfo) => {
+    console.log('[sdk] incoming call from', callerName, callInfo);
+
+    // Auto-answer if this is the return leg of our own outbound call
+    if (pendingOutboundUuid) {
+      console.log('[sdk] auto-answering outbound return leg');
+      incomingCallObj = callInfo;
+      lastCallDirection = 'outbound';
+      pendingOutboundUuid = null;
+      plivoBrowser.client.answer();
+      return;
+    }
+
+    incomingCallObj = callInfo;
+    lastCallDirection = 'inbound';
+    incomingFrom.textContent = `From: ${callerName || 'Unknown'}`;
+    activeNumber.textContent = callerName || 'Unknown';
+    incomingCard.classList.remove('hidden');
+    setStatus('ringing');
+  });
+
+  plivoBrowser.client.on('onCallAnswered', (callInfo) => {
+    console.log('[sdk] call answered');
+    incomingCard.classList.add('hidden');
+    activeCard.classList.remove('hidden');
+    setStatus('on-call');
+    startTimer();
+    activeCall = callInfo;
+  });
+
+  plivoBrowser.client.on('onCallTerminated', (reason) => {
+    console.log('[sdk] call terminated:', reason);
+    const duration = stopTimer();
+    incomingCard.classList.add('hidden');
+    activeCard.classList.add('hidden');
+    setStatus('connected');
+
+    addToCallLog({
+      direction: lastCallDirection || 'inbound',
+      number: activeNumber.textContent !== '—' ? activeNumber.textContent : 'Unknown',
+      duration,
+      timestamp: new Date().toISOString(),
+    });
+
+    activeCall = null;
+    incomingCallObj = null;
+    lastCallDirection = null;
+    activeNumber.textContent = '—';
+    activeTimer.textContent = '⏱ 00:00';
+  });
+
+  plivoBrowser.client.login(agent.username, agent.password);
+}
+
+// ── Agent selection ────────────────────────────────────────────────────
+agentSelect.addEventListener('change', async () => {
+  const agentId = agentSelect.value;
+  if (!agentId) {
+    currentAgent = null;
+    setStatus('disconnected');
+    return;
+  }
+
+  try {
+    const resp = await fetch(`/agent-credentials/${agentId}`);
+    const creds = await resp.json();
+    currentAgent = { ...agents.find(a => a.id === agentId), ...creds };
+    setStatus('disconnected');
+    initPlivo(currentAgent);
+  } catch (err) {
+    console.error('Failed to fetch credentials:', err);
+    alert('Could not load agent credentials. Is the server running?');
+  }
+});
+
+// ── Outbound call ──────────────────────────────────────────────────────
+btnCall.addEventListener('click', async () => {
+  dialError.textContent = '';
+  const toNumber = dialInput.value.trim();
+
+  if (!toNumber) {
+    dialError.textContent = 'Please enter a phone number.';
+    return;
+  }
+  if (!/^\+\d{7,15}$/.test(toNumber)) {
+    dialError.textContent = 'Use E.164 format, e.g. +14155550123';
+    return;
+  }
+  if (!currentAgent) {
+    dialError.textContent = 'Select an agent first.';
+    return;
+  }
+
+  btnCall.disabled = true;
+  btnCall.textContent = 'Calling...';
+  activeNumber.textContent = toNumber;
+  lastCallDirection = 'outbound';
+
+  try {
+    const resp = await fetch('/outbound-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: currentAgent.id, toNumber }),
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      dialError.textContent = data.error || 'Call failed.';
+      btnCall.disabled = false;
+      btnCall.textContent = 'Call';
+      activeNumber.textContent = '—';
+      lastCallDirection = null;
+      return;
+    }
+
+    pendingOutboundUuid = data.callUuid;
+    console.log('[outbound] call initiated, UUID:', data.callUuid);
+  } catch (err) {
+    dialError.textContent = 'Network error. Is the server running?';
+    btnCall.disabled = false;
+    btnCall.textContent = 'Call';
+    activeNumber.textContent = '—';
+    lastCallDirection = null;
+  }
+});
+
+// ── Accept / Reject / Hangup ───────────────────────────────────────────
+btnAccept.addEventListener('click', () => {
+  if (plivoBrowser) plivoBrowser.client.answer();
+});
+
+btnReject.addEventListener('click', () => {
+  if (plivoBrowser) plivoBrowser.client.reject();
+  incomingCard.classList.add('hidden');
+  incomingCallObj = null;
+  lastCallDirection = null;
+  setStatus('connected');
+});
+
+btnHangup.addEventListener('click', () => {
+  if (plivoBrowser) plivoBrowser.client.hangup();
+});
+
+// ── Load agents on page load ───────────────────────────────────────────
+(async () => {
+  try {
+    const resp = await fetch('/agents');
+    agents = await resp.json();
+    agents.forEach(agent => {
+      const opt = document.createElement('option');
+      opt.value = agent.id;
+      opt.textContent = `${agent.name} (${agent.number})`;
+      agentSelect.appendChild(opt);
+    });
+  } catch (err) {
+    console.error('Failed to load agents:', err);
+  }
+})();
+</script>
+</body>
+</html>
