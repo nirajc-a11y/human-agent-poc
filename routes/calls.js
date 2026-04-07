@@ -34,8 +34,10 @@ router.post('/call-handler', (req, res) => {
       return res.send(xml('<Speak>This number is not configured. Goodbye.</Speak>'));
     }
     console.log(`[call-handler] inbound — routing to ${agent.name} (${agent.endpointUsername})`);
+    // callbackUrl fires on ALL dial outcomes (answered, no-answer, busy, completed).
+    // /inbound-fallback checks DialStatus and only plays voicemail for no-answer/busy.
     return res.send(xml(
-      `<Dial callbackUrl="${BASE_URL}/inbound-fallback" callbackMethod="POST" timeout="25">` +
+      `<Dial callbackUrl="${BASE_URL}/inbound-fallback" callbackMethod="POST" timeout="25" redirect="false">` +
       `<User>sip:${agent.endpointUsername}@phone.plivo.com</User>` +
       `</Dial>`
     ));
@@ -57,10 +59,20 @@ router.post('/call-handler', (req, res) => {
   res.send(xml(''));
 });
 
-// POST /inbound-fallback — agent didn't answer within timeout → voicemail
+// POST /inbound-fallback — Dial callback, fires on every dial outcome
+// Only play voicemail if the agent didn't answer (no-answer, busy, timeout, failed)
 router.post('/inbound-fallback', (req, res) => {
   res.set('Content-Type', 'text/xml');
-  console.log('[inbound-fallback] no answer — playing voicemail prompt');
+  const dialStatus = (req.body.DialStatus || req.body.dial_status || '').toLowerCase();
+  console.log(`[inbound-fallback] DialStatus=${dialStatus}`);
+
+  // completed = call was answered and finished normally → do nothing
+  if (dialStatus === 'completed' || dialStatus === 'answer') {
+    return res.send(xml(''));
+  }
+
+  // no-answer, busy, failed, timeout → play voicemail
+  console.log('[inbound-fallback] agent did not answer — playing voicemail');
   res.send(xml(
     `<Speak>Hi, we're unavailable right now. Please leave a message after the beep.</Speak>` +
     `<Record action="${BASE_URL}/voicemail-recording" maxLength="120" playBeep="true" transcribe="false"/>`
