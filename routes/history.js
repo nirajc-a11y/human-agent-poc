@@ -25,6 +25,7 @@ router.get('/api/calls/:id', requireAuth, (req, res) => {
   const call = getCall(req.params.id);
   if (!call) return res.status(404).json({ error: 'Not found' });
   if (call.analysis) call.analysis = JSON.parse(call.analysis);
+  if (call.utterances) call.utterances = JSON.parse(call.utterances);
   res.json(call);
 });
 

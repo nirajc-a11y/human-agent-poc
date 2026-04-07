@@ -21,7 +21,7 @@ const stmtSetRecording = db.prepare(`
 `);
 
 const stmtSetAnalysis = db.prepare(`
-  UPDATE calls SET transcript = @transcript, analysis = @analysis WHERE id = @id
+  UPDATE calls SET transcript = @transcript, utterances = @utterances, analysis = @analysis WHERE id = @id
 `);
 
 const stmtGet = db.prepare(`SELECT * FROM calls WHERE id = ?`);

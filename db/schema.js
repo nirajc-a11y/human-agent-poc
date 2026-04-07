@@ -19,8 +19,16 @@ db.exec(`
     recording_url  TEXT,
     status         TEXT DEFAULT 'completed',
     transcript     TEXT,
+    utterances     TEXT,
     analysis       TEXT
   );
 `);
+
+// Migration: add utterances column if it doesn't exist (safe to run on existing DBs)
+try {
+  db.exec(`ALTER TABLE calls ADD COLUMN utterances TEXT`);
+} catch (err) {
+  if (!err.message.includes('duplicate column name')) throw err;
+}
 
 module.exports = db;

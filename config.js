@@ -36,5 +36,6 @@ const agentById = {};   // keyed by endpointUsername
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+const ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY || '';
 
-module.exports = { plivoClient, agentMap, agentById, BASE_URL, GROQ_API_KEY, JWT_SECRET };
+module.exports = { plivoClient, agentMap, agentById, BASE_URL, GROQ_API_KEY, JWT_SECRET, ASSEMBLYAI_API_KEY };

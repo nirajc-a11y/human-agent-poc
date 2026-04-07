@@ -1,4 +1,9 @@
 import React, { useRef, useState } from 'react';
+
+function formatMs(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
 import api from '../../api';
 import SentimentBadge from '../shared/SentimentBadge';
 
@@ -69,6 +74,11 @@ export default function CallDetail({ call, onAnalysisUpdate }) {
   const analysis = call.analysis
     ? (typeof call.analysis === 'string' ? JSON.parse(call.analysis) : call.analysis)
     : null;
+  const utterances = call.utterances
+    ? (typeof call.utterances === 'string' ? JSON.parse(call.utterances) : call.utterances)
+    : null;
+  const isAgent = (speaker) => speaker === 'A';
+  const speakerLabel = (speaker) => speaker === 'A' ? 'Agent' : 'User';
 
   async function reAnalyze() {
     setLoading(true);
@@ -87,7 +97,40 @@ export default function CallDetail({ call, onAnalysisUpdate }) {
       <WaveformPlayer url={call.recording_url} />
 
       {/* Transcript */}
-      {call.transcript ? (
+      {utterances ? (
+        <div style={{
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderLeft: '3px solid var(--accent)', borderRadius: '0 10px 10px 0',
+          padding: '10px 14px',
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 8 }}>Transcript</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto', padding: '2px 0' }}>
+            {utterances.length === 0 && (
+              <p style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic', margin: 0 }}>No speech detected</p>
+            )}
+            {utterances.map((u, i) => {
+              const agent = isAgent(u.speaker);
+              return (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: agent ? 'flex-end' : 'flex-start' }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-3)', marginBottom: 2, paddingLeft: agent ? 0 : 4, paddingRight: agent ? 4 : 0 }}>
+                    {speakerLabel(u.speaker)} · {formatMs(u.start)}
+                  </div>
+                  <div style={{
+                    maxWidth: '80%', padding: '7px 11px',
+                    borderRadius: agent ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                    background: agent ? 'var(--accent)' : 'var(--surface-raised)',
+                    color: agent ? '#fff' : 'var(--text-1)',
+                    fontSize: 12, lineHeight: 1.6,
+                    border: agent ? 'none' : '1px solid var(--border)',
+                  }}>
+                    {u.text}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : call.transcript ? (
         <div style={{
           background: 'var(--surface)', border: '1px solid var(--border)',
           borderLeft: '3px solid var(--accent)', borderRadius: '0 10px 10px 0',

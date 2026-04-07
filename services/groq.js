@@ -1,29 +1,33 @@
 const Groq = require('groq-sdk');
-const { GROQ_API_KEY } = require('../config');
+const { AssemblyAI } = require('assemblyai');
+const { GROQ_API_KEY, ASSEMBLYAI_API_KEY } = require('../config');
 const { getCall, setAnalysis } = require('../db/queries');
 const log = require('../logger');
 
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
 async function transcribeRecording(recordingUrl) {
-  log.info('GROQ', 'transcribing recording', { url: recordingUrl });
-  const response = await fetch(recordingUrl);
-  if (!response.ok) throw new Error(`Failed to fetch recording: ${response.status}`);
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  // Groq SDK accepts a File-like object
-  const { File } = await import('node:buffer');
-  const file = new File([buffer], 'recording.mp3', { type: 'audio/mpeg' });
-
-  const transcription = await groq.audio.transcriptions.create({
-    file,
-    model: 'whisper-large-v3',
-    response_format: 'text',
+  if (!ASSEMBLYAI_API_KEY) throw new Error('ASSEMBLYAI_API_KEY is not configured');
+  log.info('ASSEMBLYAI', 'transcribing recording', { url: recordingUrl });
+  const client = new AssemblyAI({ apiKey: ASSEMBLYAI_API_KEY });
+  const result = await client.transcripts.transcribe({
+    audio: recordingUrl,
+    speaker_labels: true,
+    speech_models: ['universal-3-pro', 'universal-2'],
   });
-  const text = typeof transcription === 'string' ? transcription : transcription.text || '';
-  log.info('GROQ', 'transcription complete', { chars: text.length });
-  return text;
+
+  if (result.status === 'error') throw new Error(`AssemblyAI error: ${result.error}`);
+
+  const utterances = (result.utterances || []).map(u => ({
+    speaker: u.speaker,
+    start: u.start,
+    end: u.end,
+    text: u.text,
+  }));
+
+  const plainText = utterances.map(u => `${u.speaker}: ${u.text}`).join('\n');
+  log.info('ASSEMBLYAI', 'transcription complete', { utterances: utterances.length });
+  return { plainText, utterances };
 }
 
 async function analyseTranscript(transcript) {
@@ -60,18 +64,19 @@ async function runAnalysis(callId) {
   if (!call) throw new Error(`Call ${callId} not found`);
   if (!call.recording_url) throw new Error(`Call ${callId} has no recording URL`);
 
-  const transcript = await transcribeRecording(call.recording_url);
+  const { plainText, utterances } = await transcribeRecording(call.recording_url);
   log.info('GROQ', 'analysing transcript', { callId });
-  const analysis = await analyseTranscript(transcript);
+  const analysis = await analyseTranscript(plainText);
 
   setAnalysis({
     id: callId,
-    transcript,
+    transcript: plainText,
+    utterances: JSON.stringify(utterances),
     analysis: JSON.stringify(analysis),
   });
 
   log.info('GROQ', 'analysis saved', { callId, sentiment: analysis.sentiment });
-  return { transcript, analysis };
+  return { transcript: plainText, utterances, analysis };
 }
 
 module.exports = { runAnalysis };
